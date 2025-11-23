@@ -1,0 +1,1 @@
+# Weekly_SwingTrades_Scanner
