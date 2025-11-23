@@ -1,48 +1,63 @@
-name: Daily Swing Scanner
+name: Daily NSE Swing Scanner
 
 on:
   schedule:
-    # Run at 10:00 UTC (3:30 PM IST) every day
-    - cron: '0 10 * * *'
-  workflow_dispatch:  # Allow manual trigger
-
-permissions:
-  contents: write
+    - cron: '0 10 * * 0'   # Every Sunday 10:00 UTC = 3:30 PM IST → perfect time
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Run in debug mode'
+        required: false
+        default: 'false'
 
 jobs:
-  scan:
+  scan-and-deploy:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        
-    - name: Run Scanner
-      run: python weekly_swing_scanner.py
-      
-    - name: Commit and Push Results
-      run: |
-        git config --global user.name 'GitHub Action'
-        git config --global user.email 'action@github.com'
-        git add *.csv *.xlsx
-        git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-scan results [skip ci]" && git push)
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: scan-results
-        path: |
-          *.csv
-          *.xlsx
+      - name: Checkout repository (with push permission)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}   # ← THIS IS THE KEY FIX
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas yfinance requests openpyxl
+
+      - name: Run the PRO scanner
+        run: python nse_swing_pro.py
+
+      - name: Commit & push results (only if files changed)
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+
+          # Add both CSV and Excel files
+          git add SWING_PRO_*.csv SWING_PRO_*.xlsx *.csv *.xlsx 2>/dev/null || echo "No files to add"
+
+          # Only commit if something actually changed
+          if git diff --staged --quiet; then
+            echo "No new scan results → nothing to commit"
+          else
+            git commit -m "Auto scan results $(date '+%Y-%m-%d %H:%M UTC')"
+            git push origin main
+            echo "New results pushed!"
+          fi
+
+      - name: Trigger Streamlit redeploy
+        if: success()
+        env:
+          STREAMLIT_TOKEN: ${{ secrets.STREAMLIT_TOKEN }}
+        run: |
+          # ←←← REPLACE THIS LINE WITH YOUR ACTUAL REPO NAME ←←←
+          REPO="AJ-F98/Weekly_SwingTrades_Scanner"   # Example: traderrahul/nse-swing-pro
+          
+          curl -X POST https://api.streamlit.io/v1/apps/redeploy \
+            -H "Authorization: Bearer $STREAMLIT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"repo\": \"$REPO\", \"branch\": \"main\"}"
