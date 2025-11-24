@@ -82,7 +82,6 @@ if len(df) == 0:
     st.markdown("**This is the edge.** Most traders lose money right now — you are winning by doing nothing.")
     st.markdown("Next batch of 10–15% winners coming after the correction.")
     st.markdown("</div>", unsafe_allow_html=True)
-    st.balloons()
     st.stop()
 
 # ==================== STATS ====================
